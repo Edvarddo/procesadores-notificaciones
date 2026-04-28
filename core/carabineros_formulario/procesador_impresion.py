@@ -5,7 +5,7 @@ Extrae IDs de notificación y genera CSV para automatización.
 
 import os
 import pandas as pd
-from typing import list
+from typing import List
 from dataclasses import dataclass
 
 
@@ -34,7 +34,7 @@ def buscar_columna_id_notificacion(df: pd.DataFrame) -> str:
     return df.columns[0]
 
 
-def leer_archivo_impresion(ruta_archivo: str) -> list[RegistroImpresion]:
+def leer_archivo_impresion(ruta_archivo: str) -> List[RegistroImpresion]:
     """
     Lee archivo de impresión (XLS/XLSX) y extrae IDs de notificación.
     
@@ -57,7 +57,7 @@ def leer_archivo_impresion(ruta_archivo: str) -> list[RegistroImpresion]:
         # Intentar leer como CSV
         df = pd.read_csv(ruta_archivo)
     
-    # Remover filas vacías
+    # Remover filas completamente vacías
     df = df.dropna(how='all')
     
     # Buscar columna de ID
@@ -67,12 +67,37 @@ def leer_archivo_impresion(ruta_archivo: str) -> list[RegistroImpresion]:
     for idx, row in df.iterrows():
         id_notif = str(row[col_id]).strip()
         
-        # Saltar filas vacías o headers
-        if id_notif and id_notif.lower() not in ['id', 'notificación', 'numero', 'nan']:
-            registros.append(RegistroImpresion(id_notificacion=id_notif))
+        # Filtrar filas inválidas:
+        # - Vacías o NaN
+        # - Headers (contienen palabras como "notificación", "id", "detalle", "fecha", etc.)
+        # - Que no sean principalmente números
+        if not id_notif or id_notif.lower() == 'nan':
+            continue
+        
+        # Ignorar filas que parecen ser headers o texto descriptivo
+        palabras_header = [
+            'id', 'notificación', 'numero', 'detalle', 'fecha', 'emisión', 
+            'impresión', 'nombre', 'estado', 'cabecera', 'encabezado',
+            'header', 'column', 'field'
+        ]
+        
+        es_header = any(palabra in id_notif.lower() for palabra in palabras_header)
+        
+        if es_header:
+            continue
+        
+        # Validar que sea principalmente numérico (al menos 5 dígitos)
+        # Los IDs de notificación son típicamente números como: 18060023, 12345678, etc.
+        solo_numeros = ''.join(c for c in id_notif if c.isdigit())
+        
+        if len(solo_numeros) < 5:  # Debe tener al menos 5 dígitos
+            continue
+        
+        # Si pasó todas las validaciones, agregar como registro válido
+        registros.append(RegistroImpresion(id_notificacion=id_notif))
     
     if not registros:
-        raise ValueError("No se encontraron IDs de notificación en el archivo")
+        raise ValueError("No se encontraron IDs de notificación válidos en el archivo")
     
     return registros
 
@@ -81,16 +106,18 @@ def generar_csv_desde_impresion(
     ruta_impresion: str,
     codigo: str,
     hora: str,
-    ruta_salida: str = None
+    ruta_salida: str = None,
+    observacion: str = "."
 ) -> str:
     """
-    Lee archivo de impresión, extrae IDs y genera CSV con código + hora.
+    Lee archivo de impresión, extrae IDs y genera CSV con código + hora + observación.
     
     Args:
         ruta_impresion: Ruta al archivo de impresión
         codigo: Código a asignar (ej: D2)
         hora: Hora a asignar (ej: 1205)
         ruta_salida: Ruta del CSV de salida (opcional)
+        observacion: Observación a asignar (por defecto: ".")
         
     Returns:
         Ruta del archivo CSV generado
@@ -112,18 +139,15 @@ def generar_csv_desde_impresion(
         nombre_base = os.path.splitext(os.path.basename(ruta_impresion))[0]
         ruta_salida = os.path.join(dir_base, f"{nombre_base}_procesado.csv")
     
-    # Crear DataFrame con estructura estándar compatible con procesador normal
-    # El procesador normal espera: rit, anio, id_notificacion, hora, codigo, observacion
-    # Para impresiones, rit y anio pueden estar vacíos (solo importa id_notificacion)
+    # Crear DataFrame sin columnas rit y anio (no se usan en impresiones)
+    # El procesador normal buscará por id_notificacion
     datos = []
     for reg in registros:
         datos.append({
-            'rit': '',  # Vacío - no viene en impresión
-            'anio': '',  # Vacío - no viene en impresión
             'id_notificacion': reg.id_notificacion,
             'codigo': codigo,
             'hora': hora,
-            'observacion': ''  # Vacío para que el usuario lo pueda llenar si lo necesita
+            'observacion': observacion
         })
     
     df = pd.DataFrame(datos)
@@ -137,7 +161,7 @@ def generar_csv_desde_impresion(
     return ruta_salida
 
 
-def previsualizar_impresion(ruta_archivo: str, max_registros: int = 5) -> list[RegistroImpresion]:
+def previsualizar_impresion(ruta_archivo: str, max_registros: int = 5) -> List[RegistroImpresion]:
     """
     Lee archivo de impresión y retorna primeros N registros para preview.
     """

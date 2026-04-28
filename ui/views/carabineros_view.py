@@ -36,7 +36,7 @@ class DialogoHoraCodigo(ctk.CTkToplevel):
         super().__init__(master)
 
         self.title("Datos de certificación")
-        self.geometry("360x260")
+        self.geometry("360x340")
         self.resizable(False, False)
 
         self.resultado = None
@@ -50,6 +50,11 @@ class DialogoHoraCodigo(ctk.CTkToplevel):
         self.entry_codigo = ctk.CTkEntry(self, width=180)
         self.entry_codigo.pack(pady=5)
         self.entry_codigo.insert(0, "D2")
+
+        ctk.CTkLabel(self, text="Observación (por defecto: punto)").pack(pady=(10, 5))
+        self.entry_observacion = ctk.CTkEntry(self, width=180)
+        self.entry_observacion.pack(pady=5)
+        self.entry_observacion.insert(0, ".")
 
         self.btn_aceptar = ctk.CTkButton(
             self,
@@ -74,6 +79,7 @@ class DialogoHoraCodigo(ctk.CTkToplevel):
     def aceptar(self):
         hora = self.entry_hora.get().strip()
         codigo = self.entry_codigo.get().strip().upper()
+        observacion = self.entry_observacion.get().strip()
 
         if not hora.isdigit() or len(hora) != 4:
             messagebox.showerror("Error", "La hora debe tener formato HHMM, por ejemplo 1205.")
@@ -83,7 +89,7 @@ class DialogoHoraCodigo(ctk.CTkToplevel):
             messagebox.showerror("Error", "Debes ingresar un código, por ejemplo D2.")
             return
 
-        self.resultado = (hora, codigo)
+        self.resultado = (hora, codigo, observacion)
         self.destroy()
 
 class CarabinerosView(ctk.CTkFrame):
@@ -790,32 +796,32 @@ class CarabinerosView(ctk.CTkFrame):
             messagebox.showerror("Error en previsualización", str(e))
 
     def procesar_impresion_en_hilo(self):
-        """Procesa archivo de impresión: solicita código y hora, genera CSV"""
+        """Procesa archivo de impresión: solicita código, hora y observación, genera CSV"""
         if not self.archivo_impresion:
             messagebox.showerror("Error", "Selecciona un archivo de impresión primero.")
             return
 
-        # Abrir diálogo para solicitar código y hora
+        # Abrir diálogo para solicitar código, hora y observación
         dialogo = DialogoHoraCodigo(self)
         self.wait_window(dialogo)
 
         if not dialogo.resultado:
             return
 
-        hora, codigo = dialogo.resultado
+        hora, codigo, observacion = dialogo.resultado
 
         self.status_impresion.configure(text="Estado: procesando archivo de impresión...")
 
         hilo = threading.Thread(
             target=self._procesar_impresion_worker,
-            args=(hora, codigo),
+            args=(hora, codigo, observacion),
             daemon=True
         )
         hilo.start()
 
-    def _procesar_impresion_worker(self, hora, codigo):
+    def _procesar_impresion_worker(self, hora, codigo, observacion):
         try:
-            salida = generar_csv_desde_impresion(self.archivo_impresion, codigo, hora)
+            salida = generar_csv_desde_impresion(self.archivo_impresion, codigo, hora, observacion=observacion)
             self.after(0, lambda salida=salida: self._on_procesar_impresion_success(salida))
         except Exception as e:
             mensaje = str(e)
